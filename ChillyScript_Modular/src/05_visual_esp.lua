@@ -1,235 +1,41 @@
--- Module: 05_visual_esp.lua
--- ESP object creation, geometry, cache, and visual renderer.
-
-local function makeFrame(name, zIndex)
-    local frame = Instance.new("Frame")
-    frame.Name = name
-    frame.BackgroundColor3 = espColor
-    frame.BorderSizePixel = 0
-    frame.Visible = false
-    frame.ZIndex = zIndex or 10
-    frame.Parent = ScreenGui
-    return frame
-end
-
-local function getEsp(player)
-    if espObjects[player] then
-        return espObjects[player]
-    end
-
-    local object = {
-        Box = makeFrame(player.Name .. "_Box", 12),
-        HealthBack = makeFrame(player.Name .. "_HealthBack", 13),
-        Health = makeFrame(player.Name .. "_Health", 14),
-        Line = makeFrame(player.Name .. "_Line", 9),
-        Tracer = makeFrame(player.Name .. "_Tracer", 9),
-        Name = Instance.new("TextLabel"),
-        Distance = Instance.new("TextLabel"),
-        Corners = {}
-    }
-
-    object.Box.BackgroundTransparency = 1
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 1
-    stroke.Color = espColor
-    stroke.Transparency = 0.75
-    stroke.Parent = object.Box
-    object.BoxStroke = stroke
-
-    for index = 1, 8 do
-        object.Corners[index] = makeFrame(player.Name .. "_Corner_" .. tostring(index), 16)
-    end
-
-    object.HealthBack.BackgroundColor3 = Color3.fromRGB(8, 8, 10)
-    object.HealthBack.BackgroundTransparency = 0.15
-
-    object.Health.BackgroundColor3 = Color3.fromRGB(80, 255, 120)
-    object.Health.BackgroundTransparency = 0
-
-    object.Name.BackgroundColor3 = Color3.fromRGB(8, 10, 14)
-    object.Name.BackgroundTransparency = 0.28
-    object.Name.BorderSizePixel = 0
-    object.Name.TextColor3 = espColor
-    object.Name.TextStrokeTransparency = 0.65
-    object.Name.Font = Enum.Font.GothamMedium
-    object.Name.TextSize = 13
-    object.Name.Visible = false
-    object.Name.ZIndex = 15
-    object.Name.Parent = ScreenGui
-
-    local nameCorner = Instance.new("UICorner")
-    nameCorner.CornerRadius = UDim.new(0, 3)
-    nameCorner.Parent = object.Name
-
-    object.Distance.BackgroundTransparency = 1
-    object.Distance.BorderSizePixel = 0
-    object.Distance.TextColor3 = Color3.fromRGB(230, 235, 245)
-    object.Distance.TextStrokeTransparency = 0.35
-    object.Distance.Font = Enum.Font.GothamMedium
-    object.Distance.TextSize = 12
-    object.Distance.Visible = false
-    object.Distance.ZIndex = 15
-    object.Distance.Parent = ScreenGui
-
-    espObjects[player] = object
-    return object
-end
-
-local function hideEsp(object)
-    object.Box.Visible = false
-    object.HealthBack.Visible = false
-    object.Health.Visible = false
-    object.Line.Visible = false
-    object.Tracer.Visible = false
-    object.Name.Visible = false
-    object.Distance.Visible = false
-
-    for _, corner in ipairs(object.Corners) do
-        corner.Visible = false
-    end
-end
-
-local function drawLine(frame, fromPos, toPos, thickness, transparency, color)
-    local delta = toPos - fromPos
-    local center = fromPos + delta / 2
-
-    frame.Position = UDim2.fromOffset(center.X, center.Y)
-    frame.Size = UDim2.fromOffset(delta.Magnitude, thickness)
-    frame.AnchorPoint = Vector2.new(0.5, 0.5)
-    frame.Rotation = math.deg(math.atan2(delta.Y, delta.X))
-    frame.BackgroundColor3 = color or espColor
-    frame.BackgroundTransparency = transparency or 0.1
-end
-
-local function drawCornerBox(object, box, color, thickness)
-    local cornerLength = math.clamp(math.min(box.Width, box.Height) * 0.24, 7, 22)
-    local x = box.X
-    local y = box.Y
-    local w = box.Width
-    local h = box.Height
-
-    local segments = {
-        {x, y, cornerLength, thickness},
-        {x, y, thickness, cornerLength},
-        {x + w - cornerLength, y, cornerLength, thickness},
-        {x + w - thickness, y, thickness, cornerLength},
-        {x, y + h - thickness, cornerLength, thickness},
-        {x, y + h - cornerLength, thickness, cornerLength},
-        {x + w - cornerLength, y + h - thickness, cornerLength, thickness},
-        {x + w - thickness, y + h - cornerLength, thickness, cornerLength}
-    }
-
-    for index, segment in ipairs(segments) do
-        local corner = object.Corners[index]
-        corner.Position = UDim2.fromOffset(segment[1], segment[2])
-        corner.Size = UDim2.fromOffset(segment[3], segment[4])
-        corner.BackgroundColor3 = color
-        corner.BackgroundTransparency = 0
-        corner.Visible = espBox
-    end
-end
-
-local function isRenderableBodyPart(part)
-    if not part:IsA("BasePart") then
-        return false
-    end
-
-    if part.Name == "Handle" then
-        return false
-    end
-
-    local parent = part.Parent
-
-    while parent do
-        if parent:IsA("Accessory") or parent:IsA("Tool") then
-            return false
-        end
-
-        parent = parent.Parent
-    end
-
-    return true
-end
-
-local function getCharacterBox2D(character)
-    Camera = workspace.CurrentCamera
-    if not character or not Camera then return nil end
-
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not root then
         return nil
     end
 
-    local rootScreen = Camera:WorldToViewportPoint(root.Position)
-    if rootScreen.Z <= 0 then
-        return nil
-    end
+    local head = character:FindFirstChild("Head")
+    local hipHeight = humanoid and humanoid.HipHeight or 2
+    local topPosition = head and (head.Position + Vector3.new(0, head.Size.Y * 0.65, 0)) or (root.Position + Vector3.new(0, hipHeight + 2.5, 0))
+    local bottomPosition = root.Position - Vector3.new(0, math.max(hipHeight + 1.7, 2.8), 0)
+    local topScreen = Camera:WorldToViewportPoint(topPosition)
+    local bottomScreen = Camera:WorldToViewportPoint(bottomPosition)
 
-    local minX = math.huge
-    local minY = math.huge
-    local maxX = -math.huge
-    local maxY = -math.huge
-    local pointCount = 0
-
-    for _, part in ipairs(character:GetDescendants()) do
-        if isRenderableBodyPart(part) then
-            local half = part.Size / 2
-            local offsets = {
-                Vector3.new(-half.X, -half.Y, -half.Z),
-                Vector3.new(-half.X, -half.Y, half.Z),
-                Vector3.new(-half.X, half.Y, -half.Z),
-                Vector3.new(-half.X, half.Y, half.Z),
-                Vector3.new(half.X, -half.Y, -half.Z),
-                Vector3.new(half.X, -half.Y, half.Z),
-                Vector3.new(half.X, half.Y, -half.Z),
-                Vector3.new(half.X, half.Y, half.Z)
-            }
-
-            for _, offset in ipairs(offsets) do
-                local worldPoint = part.CFrame:PointToWorldSpace(offset)
-                local screenPoint = Camera:WorldToViewportPoint(worldPoint)
-
-                if screenPoint.Z > 0 then
-                    pointCount += 1
-                    minX = math.min(minX, screenPoint.X)
-                    minY = math.min(minY, screenPoint.Y)
-                    maxX = math.max(maxX, screenPoint.X)
-                    maxY = math.max(maxY, screenPoint.Y)
-                end
-            end
-        end
-    end
-
-    if pointCount == 0 then
+    if topScreen.Z <= 0 or bottomScreen.Z <= 0 then
         return nil
     end
 
     local viewport = Camera.ViewportSize
-    minX = math.clamp(minX, -viewport.X * 0.1, viewport.X * 1.1)
-    maxX = math.clamp(maxX, -viewport.X * 0.1, viewport.X * 1.1)
-    minY = math.clamp(minY, -viewport.Y * 0.1, viewport.Y * 1.1)
-    maxY = math.clamp(maxY, -viewport.Y * 0.1, viewport.Y * 1.1)
+    local centerX = (topScreen.X + bottomScreen.X) / 2
+    local topY = math.min(topScreen.Y, bottomScreen.Y)
+    local bottomY = math.max(topScreen.Y, bottomScreen.Y)
+    local height = bottomY - topY
 
-    local width = maxX - minX
-    local height = maxY - minY
-
-    if width < 2 or height < 2 then
+    if height < 2 then
         return nil
     end
 
-    local centerX = (minX + maxX) / 2
-    local centerY = (minY + maxY) / 2
+    local width = height * 0.46
+    local centerY = (topY + bottomY) / 2
 
     height = math.clamp(height * espScale, 28, viewport.Y * 0.92)
     width = math.clamp(width * espScale, height * 0.28, height * 0.72)
+    local x = math.clamp(centerX - width / 2, -viewport.X * 0.1, viewport.X * 1.1)
+    local y = math.clamp(centerY - height / 2, -viewport.Y * 0.1, viewport.Y * 1.1)
 
     return {
-        X = centerX - width / 2,
-        Y = centerY - height / 2,
+        X = x,
+        Y = y,
         Width = width,
         Height = height,
-        Center = Vector2.new(centerX, centerY)
+        Center = Vector2.new(x + width / 2, y + height / 2)
     }
 end
 
@@ -286,14 +92,32 @@ local function updateVisuals()
     FovCircle.Position = UDim2.fromOffset(centerPos.X, centerPos.Y)
     FovCircle.Size = UDim2.fromOffset(aimFov * 2, aimFov * 2)
 
+    if not anyEspElementEnabled() then
+        if espWasRendering then
+            for _, object in pairs(espObjects) do
+                hideEsp(object)
+            end
+            espCache = {}
+            espWasRendering = false
+        end
+
+        return
+    end
+
+    espWasRendering = true
+
     for _, player in ipairs(Players:GetPlayers()) do
-        local object = getEsp(player)
         local data = getCachedEspData(player)
+        local object = espObjects[player]
 
         if not data then
-            hideEsp(object)
+            if object then
+                hideEsp(object)
+            end
             continue
         end
+
+        object = object or getEsp(player)
 
         local box = data.Box
         local targetColor = data.Color
